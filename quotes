@@ -1,0 +1,135 @@
+install.packages("academictwitteR")
+library(academictwitteR)
+install.packages("jsonlite")
+library(jsonlite)
+install.packages("rjson")
+library(rjson)
+install.packages("httr")
+library(httr)
+install.packages("ggplot2")
+library(ggplot2)
+install.packages("plyr")
+library(plyr)
+install.packages("dplyr")
+library(dplyr)
+install.packages("stringr")
+library(stringr)
+install.packages("rtweet")
+library(rtweet)
+install.packages("twitteR")
+library(twitteR)
+install.packages("magrittr")
+library(magrittr)
+install.packages("lubridate")
+library(lubridate)
+install.packages("arules")
+install.packages("arulesViz")
+install.packages("tidyverse")
+install.packages("purrr")
+
+# Loading package
+library(arules)
+library(arulesViz)
+library(tidyverse)
+library(purrr)
+library(readxl)
+library(knitr)
+
+install.packages("tm")
+install.packages("igraph")
+install.packages("ggplot2")
+
+library(tm)
+library(igraph)
+library(ggplot2)
+install.packages("tidytext")
+
+library(tidytext)
+
+install.packages("stringr")
+library(stringr)
+
+# bind json files in the directory "data" into a data frame containing tweets
+bind_tweets(data_path = "C:\\Users\\atoos\\OneDrive\\Desktop\\American Heart Month data json")
+# bind json files in the directory "data" into a data frame containing user information
+bind_tweets(data_path = "C:\\Users\\atoos\\OneDrive\\Desktop\\American Heart Month data json", user = TRUE)
+# bind json files in the directory "data" into a "tidy" data frame / tibble
+tweets_AmericanHeartMonth <- bind_tweets(data_path = "C:\\Users\\atoos\\OneDrive\\Desktop\\American Heart Month data json", user = TRUE, output_format = "tidy")
+
+
+
+# Identify quoted tweets
+AHM_quotes <- tweets_AmericanHeartMonth %>% select (text, created_at, lang, quote_count) %>% filter (lang %in% c("en"), tweets_AmericanHeartMonth$quote_count > 0) %>% na.omit() 
+
+##create pattern to search hashtags within text
+hashtag_pat <- "#[a-zA-Z0-9_-ー\\.]+"
+hashtag_quotes <- str_extract_all(AHM_quotes$text, hashtag_pat)
+hashtag_word_quote <- unlist(hashtag_quotes)
+hashtag_word_quote <- tolower(hashtag_word_quote)
+hashtag_word_quote <- gsub("[[:punct:]ー]", "", hashtag_word_quote)
+hashtag_word_quote <- hashtag_word_quote[!str_detect(hashtag_word_quote, "AmericanHeartMonth")]
+
+glimpse(hashtag_word_quote)
+
+hashtag_count_quote <- table(hashtag_word_quote)
+top_10_hashtag_quote <- sort(hashtag_count_quote, decreasing = TRUE)[1:10]
+top_10_hashtag_quote
+
+as.data.frame(hashtag_word_quote) %>%
+  count(hashtag_word_quote, sort = TRUE) %>%
+  mutate(hashtag_word_quote = reorder(hashtag_word_quote, n)) %>%
+  top_n(10) %>%
+  ggplot(aes(x = hashtag_word_quote, y = n)) +
+  geom_col() +
+  coord_flip() +
+  labs(x = "Count",
+       y = "Hashtag_quotes",
+       title = "Top 10 hashtags used in quotes with #AmericanHeartMonth")
+
+corpus <- Corpus(VectorSource(hashtag_quotes))
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, removeWords, stopwords("english"))
+corpus <- tm_map(corpus, stripWhitespace)
+dtm <- DocumentTermMatrix(corpus)
+cooc_matrix <- crossprod(as.matrix(dtm))
+
+# Create an adjacency matrix
+adjacency_matrix <- as.matrix(cooc_matrix)
+
+# Create an igraph graph
+g2 <- graph.adjacency(adjacency_matrix, weighted = TRUE, mode = "undirected")
+
+# You can also filter the network to remove low-weight edges to reduce noise
+# Set your desired threshold value
+threshold_value <- 0.5 # Adjust this value as needed
+
+# Filter the network to remove low-weight edges
+g2 <- delete_edges(g2, E(g2)[weight < threshold_value])
+
+# Remove nodes with degrees below a certain threshold (e.g., degree < 5)
+g2 <- delete_vertices(g2, V(g2)[degree(g2) < 56 ])
+
+# Plot the network
+plot(g2, layout = layout.fruchterman.reingold, edge.arrow.size = 0.1)
+
+saveRDS(hashtag_quotes, file = "hashtag_quotes.rds")
+saveRDS(hashtag_count_quote, file = "hashtag_count_quotes.rds")
+saveRDS(hashtag_word_quote, file = "hashtag_word_quotes.rds")
+
+install.packages("igraph")
+library(igraph)
+# Create a graph object from your data
+con_graph <- graph_from_data_frame(hashtag_count_quote, directed = FALSE)
+num_nodes <- vcount(con_graph)
+
+num_edges <- ecount(con_graph)
+
+cat("Number of nodes (hashtags):", num_nodes, "\n")
+cat("Number of edges (co-occurrences):", num_edges, "\n")
+
+con_density <- graph.density(con_graph)
+cat("Density of the Co-Occurrence Network:", con_density, "\n")
+
+
